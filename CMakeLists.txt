@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 
-# Components live in the meatpi-components repo
+# Shared components live in the meatpi-components repo
 # (github.com/meatpiHQ/meatpi-components). Clone it next to this
 # checkout, or point the MEATPI_COMPONENTS_PATH environment variable at
-# its components/ directory. The components/ dir in this repo holds
-# only non-component files (docs, legacy reference).
+# its components/ directory. This repo's components/ directory also holds
+# optional local extensions, docs and legacy reference material.
 if(DEFINED ENV{MEATPI_COMPONENTS_PATH})
     file(TO_CMAKE_PATH "$ENV{MEATPI_COMPONENTS_PATH}" MEATPI_COMPONENTS_PATH)
     if(NOT EXISTS "${MEATPI_COMPONENTS_PATH}")

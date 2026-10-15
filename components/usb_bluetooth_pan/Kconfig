@@ -1,0 +1,14 @@
+menu "USB Bluetooth PAN"
+
+config WICAN_USB_BLUETOOTH_PAN
+    bool "Build the external USB Bluetooth PAN backend"
+    default n
+    depends on IDF_TARGET_ESP32S3 && CHERRYUSB_HOST
+    select ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF
+    help
+        Use a CSR-compatible USB Bluetooth Classic controller for phone
+        tethering. The onboard BLE radio remains available. This optional
+        backend uses BTstack; read docs/USB_BLUETOOTH_PAN.md for its licence
+        and the build and hardware-validation procedure.
+
+endmenu

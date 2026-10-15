@@ -60,6 +60,13 @@
 - When the BLE is connected, the device configuration access point will be disabled i.e you won't be able to configure the device unless you disconnect the BLE, by turning off the BLE on your phone or device.
 - If AP+Station mode is enabled, only use station IP to communicate with the device and AP must be used for configuration only.
   
+## USB Bluetooth Phone Tethering
+
+An optional USB Bluetooth PAN client for WiCAN PRO is available in this branch.
+See [USB Bluetooth PAN](docs/USB_BLUETOOTH_PAN.md) for the supported controller
+candidates, build configuration, settings, pairing, dependency licence and
+hardware-validation checklist.
+
 # **J2534 PassThru Driver**
 
 WiCAN PRO can act as an SAE J2534-1 PassThru interface for Windows diagnostic and reflash tools, over USB or WiFi. The Windows driver installer is in [drivers/j2534](drivers/j2534/) (see its README for setup) and is also attached to each firmware release.

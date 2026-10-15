@@ -1,0 +1,2 @@
+# Apply after sdkconfig.defaults when configuring a PAN-enabled build.
+CONFIG_WICAN_USB_BLUETOOTH_PAN=y

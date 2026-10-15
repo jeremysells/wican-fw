@@ -23,6 +23,7 @@
 #include "mqtt_manager.h"
 #include "sleep_manager.h"
 #include "usb_host_manager.h"
+#include "usb_bluetooth_pan.h"
 #include "usb_acm_cli.h"
 #include "j2534_server.h"
 #include "vpn_manager.h"
@@ -48,6 +49,7 @@ static void on_prepare_sleep(void)
        the USB host and WiFi go (it printed "uplink: wifi -> none" after
        "components down" on the sleep bench) */
     (void)espnetlink_link_stop();
+    (void)usb_bluetooth_pan_stop();
     (void)usb_host_manager_stop(); /* waits for its teardown (bounded) */
     (void)wifi_manager_stop();
     (void)ble_http_stop();

@@ -91,3 +91,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 internal/
+# Local PAN build settings and outputs
+sdkconfig.pan.local
+sdkconfig.pan.local.old
+build-pan/

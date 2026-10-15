@@ -73,6 +73,7 @@
 #include "restart_tracker.h"
 #include "rtc_manager.h"
 #include "settings_manager.h"
+#include "usb_bluetooth_pan.h"
 #include "socket_manager.h"
 #include "websocket_manager.h"
 #include "wifi_manager.h"
@@ -230,6 +231,7 @@ void app_main(void)
     main_boot_init("iperf_manager_init", iperf_manager_init);
     main_boot_init("sleep_manager_init", sleep_manager_init);
     main_boot_init("usb_host_manager_init", usb_host_manager_init);
+    main_boot_init("usb_bluetooth_pan_init", usb_bluetooth_pan_init);
     main_boot_init("usb_acm_cli_init", usb_acm_cli_init);
     main_boot_init("espnetlink_link_init", espnetlink_link_init);
     main_boot_init("j2534_server_init", j2534_server_init);
@@ -275,6 +277,8 @@ void app_main(void)
               sleep_manager_register_http);
     main_boot_init("usb_host_manager_register_http",
               usb_host_manager_register_http);
+    main_boot_init("usb_bluetooth_pan_register_http",
+              usb_bluetooth_pan_register_http);
     main_boot_init("usb_acm_cli_register_http", usb_acm_cli_register_http);
     main_boot_init("espnetlink_link_register_http",
               espnetlink_link_register_http);
@@ -373,6 +377,7 @@ void app_main(void)
     main_boot_start("config_backup", config_backup_start);
     /* the wired uplink; network-gated consumers pick it up via the
        ETH_CONNECTED bit exactly like the STA */
+    main_boot_start("usb_bluetooth_pan", usb_bluetooth_pan_start);
     main_boot_start("usb_host_manager", usb_host_manager_start);
     main_boot_start("usb_acm_cli", usb_acm_cli_start);
     /* the ESPNetLink dongle as the internet uplink: zero-touch pairing
