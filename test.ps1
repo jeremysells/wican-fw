@@ -15,7 +15,7 @@
 # land in test-reports\logs\<run>\ (gitignored).
 #
 param(
-    [Parameter(Mandatory = $true, Position = 0)][ValidateSet('check', 'host', 'target', 'hil', 'live', 'perf', 'usbeth', 'espnetlink', 'blesec', 'blehttp', 'blej2534', 'blecanraw', 'blephy', 'blethru', 'sleep', 'sleepmatrix', 'conserve', 'autobaud', 'wwh', 'eutruck', 'j1939', 'crashnote', 'vpnpause', 'vpnroutes', 'usbgps', 'backup', 'stackaudit', 'dwc2', 'logsinks', 'all', 'list')]
+    [Parameter(Mandatory = $true, Position = 0)][ValidateSet('check', 'host', 'target', 'hil', 'live', 'perf', 'usbeth', 'espnetlink', 'blesec', 'blehttp', 'blej2534', 'blecanraw', 'blephy', 'blethru', 'sleep', 'sleepmatrix', 'conserve', 'autobaud', 'wwh', 'eutruck', 'j1939', 'crashnote', 'vpnpause', 'vpnroutes', 'garage', 'espnleasy', 'usbgps', 'abrp', 'backup', 'logclock', 'stackaudit', 'dwc2', 'logsinks', 'all', 'list')]
     [string]$What,
     [Parameter(Position = 1)][string]$Component,
     [string]$Port = 'COM10',  # UART0 external USB-serial = console/flash
@@ -761,7 +761,7 @@ function Invoke-EspnetlinkBench {
         $script:note = 'espnetlink not present (no RNDIS + ACM console)'
         return
     }
-    $out = Invoke-Bench "cd ~/wican && python3 -u tools/testbench/usb/espnetlink_bench.py"
+    $out = Invoke-Bench "cd ~/wican && python3 -u tools/testbench/usb/espnetlink_bench.py $DutIp"
     Save-StageLog 'espnetlink_bench' $out
     if (-not ($out | Select-String -Quiet 'ESPNETLINK TARGET PASS')) { throw 'no ESPNETLINK TARGET PASS' }
     $script:note = 'ESPNETLINK TARGET PASS (RNDIS data + ACM modem status)'
@@ -845,7 +845,10 @@ function Show-Inventory {
     Write-Host '  autobaud   - CAN listen-before-talk, auto bit rate and the autopid bus guard: PCAN keeps the bus alive and counts error frames (~9 min)'
     Write-Host '  vpnpause   - the VPN pauses on networks marked Pause VPN (issue #976): the bench AP marked / unmarked, away on the dongle AP, home again; wg-bench on the Pi, the console for the away leg (~12 min)'
     Write-Host '  vpnroutes  - the split tunnel (issue #975): a request to a routed network leaves through wg-bench on the Pi, one to any other address through the station, judged at the receiver by the source address (~6 min)'
+    Write-Host '  espnleasy  - the ESPNetLink easy-setup surfaces on the DUT (2026-10-13): the usb summary on /api/status against /api/espnetlink, the sim_pin key (a no-op PUT, no restart), the UI doors in the served page, the GPS hint counting away from home (ap off on the P4 for 100 s, home again) (~6 min; needs the P4 daemon)'
+    Write-Host '  garage     - the garage story with the ESPNetLink (2026-10-12): home WiFi on the P4, away on the dongle LTE with the VPN to betty, home again, flaps, a dongle reboot away, sleep/wake both ways; the data path judged at a receiver on betty by the source address of every POST; the default legs in usb_rndis with VPN variant A (~35 min; wifi_modem, variant B, g9 and g11 by hand)'
     Write-Host '  usbgps     - a USB GPS receiver is read by default (issue #978): the console switch off, the receiver read as NMEA from boot, the fix when the sky allows, gps_ in autopid and the HA push, the USB GPS receiver switch off = ignored, back on; then the USB page card, the switches and the Status row in Chrome (3 to 4 planned restarts, ~6 min)'
+    Write-Host '  abrp       - the ABRP rows against the real Iternio API (2026-10-13): the key checked from the PC, host routes on the Pi for the run, the key as a query parameter / as the Authorization header / a wrong key, the counters over the window, the Test button, get_telemetry as the witness with a user token in internal/abrp_credentials.json (PARTIAL without one: the 401 refusals only), restore (2 planned restarts, ~5 min)'
     Write-Host '  backup     - the configuration backup that carries everything (issue #979): the file plain / redacted / encrypted after the key, the fs deny list, the round trips from a file and from the copy on the flash, the refusals, the sweep (8 planned restarts, ~7 min)'
     Write-Host '  wwh        - OBD over UDS (ISO 27145 / SAE J1979-2): a PCAN vehicle is detected, polled, its codes read and cleared; the car switch both ways (~10 min)'
     Write-Host '  crashnote  - the crash note, the stored crash report and the crash-loop brake, two stages: (1) the DUT is crashed on purpose over its console (abort, an invalid store twice, the interrupt watchdog); the next boot must say where: its note against the console panic text, the decoded function names, one small NVS write for a crash that is news and none for the same crash again, the report word for word after a PSU power cycle (CRASH NOTE PASS); (2) three quick crashes in a row park the device: console line, HTTP silent, supply current against sleep mode, the timed exit, the next crash parks at once, a power cycle is a fresh start (CRASH PARK PASS)'
@@ -1100,12 +1103,12 @@ try {
             # in), the refusals, the sweep's refresh after an upload and its
             # idle quiet. Eight planned restarts; no console, no PCAN.
             Invoke-Stage 'Configuration backup' {
-                $py = 'C:\Espressif	ools\python6.0.2env\Scripts\python.exe'
+                $py = 'C:\Espressif\tools\python\v6.0.2\venv\Scripts\python.exe'
                 $tunnel = Start-Process -FilePath 'ssh' -PassThru -WindowStyle Hidden -ArgumentList @('-N', '-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-L', "18081:${DutIp}:80", $BenchHost)
                 try {
                     Start-Sleep -Seconds 3
                     if ($tunnel.HasExited) { throw "no tunnel to the DUT through $BenchHost (port 18081 busy?)" }
-                    $out = & $py -u "$repo	ools	estbench\system\config_backup_bench.py" --dut 'localhost:18081' --pi $BenchHost 2>&1 | ForEach-Object { Write-Host $_; $_ }
+                    $out = & $py -u "$repo\tools\testbench\system\config_backup_bench.py" --dut 'localhost:18081' --pi $BenchHost 2>&1 | ForEach-Object { Write-Host $_; $_ }
                     Save-StageLog 'config_backup' $out
                     if (-not ($out | Select-String -Quiet 'CONFIG BACKUP PASS')) { throw 'no CONFIG BACKUP PASS (the DUT on the bench AP? a card in for the SD leg?)' }
                 } finally {
@@ -1155,6 +1158,85 @@ try {
                 } finally {
                     if (-not $tunnel.HasExited) { Stop-Process -Id $tunnel.Id -Force -Confirm:$false }
                     Stop-ConsoleTail $con
+                }
+            }
+        }
+        'garage' {
+            # The garage story with the ESPNetLink (2026-10-12): the home
+            # WiFi is the P4 bench AP, away is the dongle's LTE with the VPN
+            # to betty, then home again; the data path is judged at a
+            # receiver on betty by the source address of every POST. The
+            # bench opens its own tunnel to the DUT and probes the console
+            # itself (optional: only g10 needs it), so the stage holds
+            # neither. The default legs in usb_rndis with VPN variant A; the
+            # other runs are by hand (--mode wifi_modem, --vpn B, --only g9
+            # or g11).
+            Invoke-Stage 'ESPNetLink garage story' {
+                $py = 'C:\Espressif\tools\python\v6.0.2\venv\Scripts\python.exe'
+                $out = & $py -u "$repo\tools\testbench\wifi\espnetlink_garage_bench.py" '--dut-ip' $DutIp '--pi' $BenchHost 2>&1 | ForEach-Object { Write-Host $_; $_ }
+                Save-StageLog 'espnetlink_garage' $out
+                if (-not ($out | Select-String -Quiet 'ESPNL GARAGE (PARTIAL )?PASS')) { throw 'no ESPNL GARAGE PASS (the P4 daemon up? betty reachable? the dongle on the connector? the DUT on the bench AP?)' }
+            }
+        }
+        'espnleasy' {
+            # The easy-setup surfaces (2026-10-13): the bench opens its own
+            # tunnel to the DUT through the Pi and drives the P4 bench AP for
+            # the away leg (e3), so the stage holds neither; --no-away by
+            # hand when the daemon is down.
+            Invoke-Stage 'ESPNetLink easy setup' {
+                $py = 'C:\Espressif\tools\python\v6.0.2\venv\Scripts\python.exe'
+                $out = & $py -u "$repo\tools\testbench\usb\espnetlink_easy_bench.py" '--dut-ip' $DutIp '--pi' $BenchHost 2>&1 | ForEach-Object { Write-Host $_; $_ }
+                Save-StageLog 'espnetlink_easy' $out
+                if (-not ($out | Select-String -Quiet 'ESPNL EASY BENCH (PARTIAL )?PASS')) { throw 'no ESPNL EASY BENCH PASS (the P4 daemon up? the dongle on the connector? the DUT on the bench AP?)' }
+            }
+        }
+        'abrp' {
+            # The ABRP rows of data_destinations against the REAL Iternio API
+            # (2026-10-13): the api_key checked from the PC, host routes on
+            # the Pi to Iternio's addresses for the run (the bench subnet has
+            # no internet path by itself), three rows every 5 s (the key as a
+            # query parameter, as the Authorization header, a wrong key), the
+            # counters over the window, the Test button, Iternio's
+            # get_telemetry as the witness when internal/abrp_credentials.json
+            # holds a user token (without one the refusal path only: the bench
+            # says PARTIAL PASS), the originals restored. Nothing secret is
+            # printed; the credentials file is gitignored.
+            Invoke-Stage 'ABRP live' {
+                $py = 'C:\Espressif\tools\python\v6.0.2\venv\Scripts\python.exe'
+                $tunnel = Start-Process -FilePath 'ssh' -PassThru -WindowStyle Hidden -ArgumentList @('-N', '-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-L', "18081:${DutIp}:80", $BenchHost)
+                try {
+                    Start-Sleep -Seconds 3
+                    if ($tunnel.HasExited) { throw "no tunnel to the DUT through $BenchHost (port 18081 busy?)" }
+                    $out = & $py -u "$repo\tools\testbench\system\abrp_live_bench.py" '--dut' 'localhost:18081' '--pi' $BenchHost 2>&1 | ForEach-Object { Write-Host $_; $_ }
+                    Save-StageLog 'abrp_live' $out
+                    if (-not ($out | Select-String -Quiet 'ABRP LIVE (PARTIAL )?PASS')) { throw 'no ABRP LIVE PASS (internal/abrp_credentials.json present? the DUT on the bench AP? the Pi reaches the LAN router?)' }
+                    if ($out | Select-String -Quiet 'ABRP LIVE PARTIAL PASS') { Write-Host 'bench: PARTIAL, no user token in internal/abrp_credentials.json: the refusal path only' -ForegroundColor Yellow }
+                } finally {
+                    if (-not $tunnel.HasExited) { Stop-Process -Id $tunnel.Id -Force -Confirm:$false }
+                }
+            }
+        }
+        'logclock' {
+            # Log timestamps that survive the clock's history (issue #984,
+            # 2026-10-13): an SNTP actor on the Pi (UDP 123, a transient
+            # systemd unit) steps the DUT's clock forwards and backwards
+            # while the logger writes; the journal, the markers, the
+            # re-based rows, the relative formats, the unsynced boot after
+            # a PSU power cycle (`rtc --forget`), the re-base tool. Two
+            # planned restarts for the settings plus one for the format
+            # change, one power cycle. Needs the OWON PSU on this PC.
+            Invoke-Stage 'Log clock' {
+                $py = 'C:\Espressif\tools\python\v6.0.2\venv\Scripts\python.exe'
+                $tunnel = Start-Process -FilePath 'ssh' -PassThru -WindowStyle Hidden -ArgumentList @('-N', '-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', '-L', "18081:${DutIp}:80", $BenchHost)
+                try {
+                    Start-Sleep -Seconds 3
+                    if ($tunnel.HasExited) { throw "no tunnel to the DUT through $BenchHost (port 18081 busy?)" }
+                    $out = & $py -u "$repo\tools\testbench\system\log_clock_bench.py" '--dut' 'localhost:18081' '--pi' $BenchHost 2>&1 | ForEach-Object { Write-Host $_; $_ }
+                    Save-StageLog 'log_clock' $out
+                    if (-not ($out | Select-String -Quiet 'LOG CLOCK (PARTIAL )?PASS')) { throw 'no LOG CLOCK PASS (the DUT on the bench AP? the Pi can bind UDP 123? the OWON on this PC?)' }
+                    if ($out | Select-String -Quiet 'LOG CLOCK PARTIAL PASS') { Write-Host 'bench: PARTIAL (a leg skipped)' -ForegroundColor Yellow }
+                } finally {
+                    if (-not $tunnel.HasExited) { Stop-Process -Id $tunnel.Id -Force -Confirm:$false }
                 }
             }
         }

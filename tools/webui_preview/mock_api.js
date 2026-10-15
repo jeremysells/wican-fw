@@ -71,7 +71,7 @@
     const usb0 = { enabled: true, device_present: false, host_active: true, eth_connected: false, driver: "", ip: "", attaches: 0, vid: "0000", pid: "0000", vbus: true };
     const nl0 = { enabled: true, mode: "wifi_modem", auto_pair: true, paired: false, ssid: "", device_id: "", uplink: "wifi", on_link: false, host: "",
       pair_blocked_factory_pw: false, last_error: "", dongle_fw: "", dongle_api: 0, dongle_api_min: 7, health_unsupported: false,
-      usb: { attached: false, pair_state: "idle", cuts: 0, vbus_cycles: 0, errors: 0 }, gps: { valid: false }, dongle: { valid: false }, polls: 0, failures: 0, link_ups: 0 };
+      usb: { attached: false, dongle_console: false, pair_state: "idle", cuts: 0, vbus_cycles: 0, errors: 0 }, gps: { valid: false }, dongle: { valid: false }, polls: 0, failures: 0, link_ups: 0 };
     const nlv = (S.espnetlink && S.espnetlink.values) || {};
     /* dongle api 8 + the carrier relay (2026-10-07): `apn` is the WiCAN's setting,
        `carrier_synced` whether the pairing pass found the dongle holding it */
@@ -104,7 +104,27 @@
           usb: { attached: true, pair_state: "ncm_up", cuts: 0, vbus_cycles: 0, errors: 0 },
           dongle: { ...health, rssi_dbm: -59, gps_fix: true }, polls: 42, link_ups: 1 },
         acm: off, gps: fix };
+      /* 2026-10-13: the usb_rndis default on a fresh WiCAN (no hold, the dongle on
+         the wire at once), the same with no fix, a PIN-locked SIM, the GPS nudge */
+      case "espnetlink_fresh_usb":
+      case "espnetlink_usb_nofix":
+      case "espnetlink_pin":
+      case "espnetlink_nudge": {
+        const usbUp = { ...usb0, device_present: true, eth_connected: true, driver: "rndis", ip: "192.168.7.2", attaches: 1, vid: "303a", pid: "4007", device: { vid: "303a", pid: "4007", class: "rndis", product: "ESPNetLink" } };
+        const base = { ...nl0, ...fw, dongle_api: 9, mode: "usb_rndis", paired: false, uplink: "espnetlink_usb", on_link: true, host: "192.168.7.1",
+          usb: { attached: true, pair_state: "ncm_up", cuts: 0, vbus_cycles: 0, errors: 0 }, polls: 12, link_ups: 1 };
+        const d = k === "espnetlink_pin" ? { ...health, lte_connected: false, attached: false, rssi_dbm: 0, operator: "", network_type: "", ip: "", sim: "pin", stage: "sim_pin" }
+          : { ...health, operator: "Telstra", network_type: "LTE" };
+        const hint = { no_fix_s: k === "espnetlink_nudge" ? 760 : 0 };
+        return { usb: usbUp, nl: { ...base, dongle: d, gps_hint: hint }, acm: off, gps: nofix };
+      }
       case "espnetlink_home": return { usb: { ...usb0, device_present: true, attaches: 1 }, nl: paired, acm: off, gps: nofix };
+      /* dongle api 9 (2026-10-12): usb_mode=console, the CDC console alone on the
+         cable, no USB Ethernet: paired earlier, the WiCAN on its home WiFi, the
+         console bound and readable */
+      case "espnetlink_console": return { usb: { ...usb0, device_present: true, attaches: 1, device: { vid: "303a", pid: "4007", class: "cdc", product: "ESPNetLink" } },
+        nl: { ...paired, dongle_api: 9, usb: { attached: false, dongle_console: true, pair_state: "idle", cuts: 0, vbus_cycles: 0, errors: 0 } },
+        acm: { connected: true, reading: true, mode: "console", nmea_sentences: 0, gps: true, console: true }, gps: nofix };
       case "eth": return { usb: { ...usb0, device_present: true, eth_connected: true, driver: "asix", ip: "10.42.2.37", attaches: 1, vid: "0b95", pid: "772b", device: { vid: "0b95", pid: "772b", class: "vendor", product: "AX88772B" } },
         nl: nl0, acm: off, gps: nofix };
       case "eth_nolink": return { usb: { ...usb0, device_present: true, driver: "asix", attaches: 1, device: { vid: "0b95", pid: "772b", class: "vendor", product: "AX88772B" } }, nl: nl0, acm: off, gps: nofix };
@@ -178,6 +198,7 @@
     lastRestart: { reason: "software", planned: true, planned_reason: "config_apply", source: "config_server" },
     dirs: new Set(),            /* folders created through /api/fs/mkdir */
     loggerRunning: false,       /* true -> /api/logger reports the active file (write-locked) */
+    clockUnset: !!(window.__mockPreset || {}).clockUnset,   /* a boot without a clock: /api/rtc valid false */
     sdMounted: true,            /* false -> /api/status says no card, /sd listings fail */
     autopidCfg: (window.__mockPreset || {}).autopidCfg || {
       version: 1,
@@ -365,6 +386,7 @@
 
   const FIXED = {
     "/api/status": () => J({
+      usb: (window.__mockPreset || {}).usbStatus || undefined,
       bits: { awake: true, sleep: false, sta_connected: state.staConnected !== false, mqtt_connected: state.mqttConnected !== false, ble_connected: false, sdcard_mounted: state.sdMounted !== false, ble_enabled: false, sta_enabled: true, ap_enabled: true, autopid_enabled: true, home_mode: false, drive_mode: false, smartconnect: false, sta_ap_overlap: false, time_synced: true, vpn_enabled: true, wake_voltage_ok: !state.sleepPending, eth_connected: false, autopid_idle: false, motion: false, sta_suspended: false, ap_suspended: false, ble_suspended: false },
       network_connected: true, uptime: "02:14:09", version: "v6.0.0-preview", partition: "ota_0",
       boot_count: 42, unexpected_resets: 1, device_id: "14c19f44e349",
@@ -400,7 +422,13 @@
     },
     "/api/wifi/status": () => J({ enabled: true, sta_connected: state.staConnected !== false, ip: state.staConnected !== false ? "10.42.0.62" : "", ap_started: true, ap_default_password: state.apDefaultPassword === true, clients: 0, ap_ip: "192.168.0.10", dns: ["10.42.0.1", "1.1.1.1"],
       sta_attempt: { ssid: "HomeWiFi", reason: 204, fail_count: 3, deprioritised: true } }),
-    "/api/destinations": () => J({ enabled: S.data_destinations.values.enabled !== false, running: true, network: true, mqtt: true,
+    /* the ABRP coverage of the live snapshot (2026-10-13): which Iternio fields the
+       parameter names provide, which planning fields are missing and the name that
+       would fill each; the rate guard's constants */
+    "/api/destinations/abrp": () => J({ present: ["elevation", "heading", "lat", "lon", "speed", "utc"],
+      missing: [{ field: "soc", parameter: "SOC" }, { field: "power", parameter: "HV_W" }, { field: "is_charging", parameter: "CHARGING" },
+        { field: "is_dcfc", parameter: "CHARGING_DC" }, { field: "is_parked", parameter: "PARK_BRAKE" }], period_floor_s: 5, request_gap_ms: 2500 }),
+    "/api/destinations": () => J({ enabled: S.data_destinations.values.enabled !== false, running: true, network: true, mqtt: true, abrp_pacer: { gap_ms: 2500, waits: 12, waited_ms: 7400, last_request_age_s: 3 },
       destinations: (S.data_destinations.values.destinations || []).map((d, i) => ({ name: d.name, type: d.type, enabled: d.enabled !== false, url: d.url, period_s: d.period_s, auth: d.auth,
         has_token: i === 1, has_api_key: false, cert_set: d.cert_set, success: i === 0 ? 412 : 0, fail: i === 1 ? 3 : 0, skipped_offline: 0, consecutive_failures: i === 1 ? 3 : 0,
         backoff_s: i === 1 ? 10 : 0, next_in_s: 4, last_status: i === 1 ? 503 : (i === 0 ? 0 : 0), last_error: i === 1 ? "http=503" : "", last_error_time: i === 1 ? new Date().toISOString() : "",
@@ -494,11 +522,19 @@
     "/api/logger": () => J({ enabled: !!state.loggerRunning, running: !!state.loggerRunning, paused: false, storage_ok: false, file: state.loggerFile, file_rows: 0, files: 0, queued: 0,
       written: 0, dropped: 0, errors: 0, rotations: 0,
       can: { enabled: false, file: "", file_rows: 0, files: 0, queued: 0, frames_written: 0, frames_dropped: 0, rotations: 0 },
-      salvaged: state.loggerSalvaged || 0, corrupt: state.loggerCorrupt || 0, dir: "/sd/logs" }),
+      salvaged: state.loggerSalvaged || 0, corrupt: state.loggerCorrupt || 0,
+      clock: state.clockUnset ? { valid: false, source: "none", steps_this_boot: 0, rotations_by_clock: 0, journal_bytes: 0, journal: "/sd/logs/clock.jsonl" }
+        : { valid: true, source: "sntp", steps_this_boot: 2, rotations_by_clock: 2, journal_bytes: 612, journal: "/sd/logs/clock.jsonl" },
+      dir: "/sd/logs" }),
     "/api/fs/info": (full) => (/path=\/data/.test(full || "") ? J({ total: 6029312, used: 1060864 })
       /* the bench's 16 GB card as the firmware reports it since 2026-10-11 (issue #982: 3038806016 before, the 32-bit wrap) */
       : !state.sdMounted ? J({ error: "invalid path" }, 400) : J({ total: 15923707904, used: 327680 })),
-    "/api/rtc": () => J({ time: new Date().toISOString(), valid: true, rtc: null, sntp: { enabled: true, server: "pool.ntp.org", last_sync: null } }),
+    /* the clock's history (2026-10-13): `clock` = who set it and the newest step; __mockPreset.clockUnset = a boot without a clock */
+    "/api/rtc": () => state.clockUnset
+      ? J({ time: "1970-01-01T00:02:11Z", valid: false, rtc: null, sntp: { enabled: true, server: "pool.ntp.org", last_sync: null },
+            clock: { source: "none", generation: 0, steps_this_boot: 0, last_step: null } })
+      : J({ time: new Date().toISOString(), valid: true, rtc: null, sntp: { enabled: true, server: "pool.ntp.org", last_sync: null },
+            clock: { source: "sntp", generation: 2, steps_this_boot: 2, last_step: { delta_ms: 7200000, source: "sntp", at: "2026-10-13T09:14:02Z" } } }),
     "/api/logs/status": () => J({ dropped: 0, sinks: { ring: true, uart: true } }),
     "/api/logs/ring": () => T("I (1234) main: WiCAN v6 preview mock\nI (1240) wifi_manager: STA got IP 10.42.0.62\nI (2001) autopid: started (3 pids / default group)\nW (9004) event_manager: rule low_batt disabled\n"),
     "/api/status/tasks": () => J({ cores: 2, total_us: 23785179, tasks: [
@@ -762,7 +798,8 @@
       const fmt = S.data_logger && S.data_logger.values.format;
       if (fmt !== "jsonl" && fmt !== "csv") return T("params stream is not jsonl or csv", 400);
       const name = q.get("name") || "RPM", nowMs = Date.now(), base = state.dash[name] != null ? state.dash[name] : 50;
-      let out = fmt === "csv" ? "ts_ms,param,value\n" : "";
+      /* the file the rows come from (2026-10-13): the dashboard re-bases per file with the clock journal */
+      let out = (fmt === "csv" ? "ts_ms,param,value\n" : "") + JSON.stringify({ _file: "dl_" + String(state.logEpoch).padStart(10, "0") + (fmt === "csv" ? ".csv" : ".jsonl") }) + "\n";
       for (let i = 120; i >= 1; i--) {
         const ts = nowMs - i * 30000, value = base + Math.sin(i / 7) * (name === "RPM" ? 300 : 5);
         out += fmt === "csv" ? ts + ",autopid." + name + "," + value.toFixed(6) + "\n" : JSON.stringify({ ts, param: "autopid." + name, value }) + "\n";
@@ -772,6 +809,17 @@
     if (method === "POST" && path === "/api/logger/gate") { state.gateCalls++; return J({ ok: true }); }
     if (method === "GET" && path === "/api/fs/download") {
       const p = q.get("path");
+      /* the clock journal (2026-10-13): the legacy JSON-lines file and the ASC file were open when the clock
+         became valid (an unsynced boot), the SQLite file saw a +2 h step */
+      if (p === "/sd/logs/clock.jsonl") return T([
+        '{"ev":"boot","boot":3,"ts":131000,"up_ms":131000,"valid":false,"source":"none"}',
+        '{"ev":"valid","boot":3,"ts_before":140000,"ts_after":1784329700000,"delta_ms":1784329560000,"source":"sntp","files":["dl_1784329639.jsonl","can_1783689511.asc"]}',
+        '{"ev":"rotate","boot":3,"ts":1784329700000,"stream":"params","from":"dl_1784329639.jsonl","to":"dl_1784329700.jsonl","why":"clock"}',
+        '{"ev":"boot","boot":4,"ts":1784563540000,"up_ms":9000,"valid":true,"source":"rtc"}',
+        '{"ev":"step","boot":4,"ts_before":1784563600000,"ts_after":1784570800000,"delta_ms":7200000,"source":"sntp","files":["dl_1784563543.db","can_1784563543.wdl"]}',
+        '{"ev":"rotate","boot":4,"ts":1784570800000,"stream":"params","from":"dl_1784563543.db","to":"dl_1784570800.db","why":"clock"}',
+        '{"ev":"step","boot":4,"ts_before":1784574400000,"ts_after":1784570800000,"delta_ms":-3600000,"source":"manual","files":["dl_1784570800.db"]}',
+        ""].join("\n"));
       /* a binary log fixture the probe injects (window.__WDL_FIXTURE__: Uint8Array) */
       if (/\.wdl$/.test(p || "") && window.__WDL_FIXTURE__) {
         const buf = window.__WDL_FIXTURE__.buffer.slice(window.__WDL_FIXTURE__.byteOffset, window.__WDL_FIXTURE__.byteOffset + window.__WDL_FIXTURE__.byteLength);
